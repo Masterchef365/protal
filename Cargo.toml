@@ -1,0 +1,11 @@
+[package]
+name = "protal"
+version = "0.1.0"
+authors = ["Masterchef365 <duncan.freeman1@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+watertender = { path = "../watertender" }
+anyhow = "1"
+nalgebra = "0.26"
+bytemuck = "1.5"
