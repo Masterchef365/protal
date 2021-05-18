@@ -63,7 +63,7 @@ impl MainLoop for Protal {
         let ci = vk::BufferCreateInfoBuilder::new()
             .size(total_size as u64)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
+            .usage(vk::BufferUsageFlags::STORAGE_BUFFER);
         let transforms = (0..FRAMES_IN_FLIGHT)
             .map(|_| ManagedBuffer::new(core.clone(), ci, memory::UsageFlags::UPLOAD))
             .collect::<Result<Vec<_>>>()?;
@@ -76,7 +76,12 @@ impl MainLoop for Protal {
                 .binding(FRAME_DATA_BINDING)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
+                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS),
+            vk::DescriptorSetLayoutBindingBuilder::new()
+                .binding(TRANSFORM_BINDING)
+                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS),
         ];
 
         let descriptor_set_layout_ci =
@@ -89,12 +94,13 @@ impl MainLoop for Protal {
         .result()?;
 
         // Create descriptor pool
-        let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(FRAMES_IN_FLIGHT as _),
+        let pool_sizes = [
             vk::DescriptorPoolSizeBuilder::new()
-            ._type(vk::DescriptorType::STORAGE_BUFFER)
-            .descriptor_count(FRAMES_IN_FLIGHT as _)
+                ._type(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(FRAMES_IN_FLIGHT as _),
+            vk::DescriptorPoolSizeBuilder::new()
+                ._type(vk::DescriptorType::STORAGE_BUFFER)
+                .descriptor_count(FRAMES_IN_FLIGHT as _),
         ];
 
         let create_info = vk::DescriptorPoolCreateInfoBuilder::new()
@@ -115,14 +121,25 @@ impl MainLoop for Protal {
 
         // Write descriptor sets
         for (frame, &descriptor_set) in descriptor_sets.iter().enumerate() {
-            let buffer_infos = [scene_data.descriptor_buffer_info(frame)];
+            let frame_data_bi = [scene_data.descriptor_buffer_info(frame)];
+            let transform_bi = [vk::DescriptorBufferInfoBuilder::new()
+                .buffer(transforms[frame].instance())
+                .offset(0)
+                .range(vk::WHOLE_SIZE)];
+
             let writes = [
                 vk::WriteDescriptorSetBuilder::new()
-                    .buffer_info(&buffer_infos)
+                    .buffer_info(&frame_data_bi)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .dst_set(descriptor_set)
                     .dst_binding(FRAME_DATA_BINDING)
-                    .dst_array_element(0)
+                    .dst_array_element(0),
+                vk::WriteDescriptorSetBuilder::new()
+                    .buffer_info(&transform_bi)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .dst_set(descriptor_set)
+                    .dst_binding(TRANSFORM_BINDING)
+                    .dst_array_element(0),
             ];
 
             unsafe {
@@ -180,10 +197,16 @@ impl MainLoop for Protal {
 
     fn frame(
         &mut self,
+        // TODO: Rename me! This should be called something like SwapchainStuff
         frame: Frame,
         core: &SharedCore,
         platform: Platform<'_>,
     ) -> Result<PlatformReturn> {
+        let frame_data = self.frame_data();
+
+        self.transforms[self.starter_kit.frame]
+            .write_bytes(0, bytemuck::cast_slice(frame_data.positions.as_slice()))?;
+
         let cmd = self.starter_kit.begin_command_buffer(frame)?;
         let command_buffer = cmd.command_buffer;
 
@@ -217,8 +240,26 @@ impl MainLoop for Protal {
                 vk::IndexType::UINT32,
             );
 
-            core.device
-                .cmd_draw_indexed(command_buffer, self.rainbow_cube.n_indices, 1, 0, 0, 0);
+            for idx in 0..frame_data.positions.len() {
+                let push_const = [idx as u32];
+                // TODO: Make this a shortcut
+                core.device.cmd_push_constants(
+                    command_buffer,
+                    self.pipeline_layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    std::mem::size_of_val(&push_const) as u32,
+                    push_const.as_ptr() as _,
+                );
+                core.device.cmd_draw_indexed(
+                    command_buffer,
+                    self.rainbow_cube.n_indices,
+                    1,
+                    0,
+                    0,
+                    0,
+                );
+            }
         }
 
         let (ret, cameras) = self.camera.get_matrices(platform)?;
@@ -261,6 +302,7 @@ impl SyncMainLoop for Protal {
 
 impl Protal {
     fn frame_data(&mut self) -> FrameData {
+        self.anim += 0.002;
         FrameData {
             positions: vec![
                 *Matrix4::new_translation(&Vector3::new(0., -3., 0.)).as_ref(),
