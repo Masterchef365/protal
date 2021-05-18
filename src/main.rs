@@ -1,4 +1,4 @@
-use nalgebra::{Matrix4, Vector3};
+use nalgebra::{Matrix4, Vector3, Unit, Quaternion};
 use watertender::defaults::FRAMES_IN_FLIGHT;
 use watertender::memory;
 use watertender::prelude::*;
@@ -347,7 +347,7 @@ impl Protal {
             let time = frame_state.unwrap().predicted_display_time;
             let space_loc = space.locate(&xr_core.stage, time)?;
             let pose = space_loc.pose;
-            let matrix = watertender::xr_camera::view_from_pose(&pose);
+            let matrix = transform_from_pose(&pose);
 
             Ok(FrameData { positions: vec![*matrix.as_ref()] })
         } else {
@@ -379,4 +379,17 @@ fn rainbow_cube(size: f32) -> (Vec<Vertex>, Vec<u32>) {
     ];
 
     (vertices, indices)
+}
+
+pub fn transform_from_pose(pose: &xr::Posef) -> Matrix4<f32> {
+    let quat = pose.orientation;
+    let quat = Quaternion::new(quat.w, quat.x, quat.y, quat.z);
+    let quat = Unit::try_new(quat, 0.0).expect("Not a unit quaternion");
+    let rotation = quat.to_homogeneous();
+
+    let position = pose.position;
+    let position = Vector3::new(position.x, position.y, position.z);
+    let translation = Matrix4::new_translation(&position);
+
+    translation * rotation
 }
