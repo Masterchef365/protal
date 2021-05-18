@@ -15,7 +15,7 @@ struct Protal {
     transforms: Vec<ManagedBuffer>,
     scene_data: ManagedUbo<SceneData>,
 
-    action_stuff: Option<(xr::ActionSet, xr::Action<xr::Posef>)>,
+    xr_interaction: Option<OpenXrInteraction>,
 
     descriptor_sets: Vec<vk::DescriptorSet>,
     descriptor_pool: vk::DescriptorPool,
@@ -27,6 +27,12 @@ struct Protal {
     camera: MultiPlatformCamera,
     anim: f32,
     starter_kit: StarterKit,
+}
+
+struct OpenXrInteraction {
+    action_set: xr::ActionSet,
+    action_left: xr::Action<xr::Posef>,
+    action_right: xr::Action<xr::Posef>,
 }
 
 fn main() -> Result<()> {
@@ -183,40 +189,54 @@ impl MainLoop for Protal {
             &indices,
         )?;
 
-        let action_stuff = if let Platform::OpenXr { xr_core, .. } = platform {
+        let xr_interaction = if let Platform::OpenXr { xr_core, .. } = platform {
             // Create action set
             let action_set = xr_core
                 .instance
                 .create_action_set("gameplay", "Gameplay", 0)?;
-            let action = action_set.create_action::<xr::Posef>(
+            let action_right = action_set.create_action::<xr::Posef>(
                 "right_pose",
                 "Right pose",
                 &[],
             )?;
+            let action_left = action_set.create_action::<xr::Posef>(
+                "left_pose",
+                "Left pose",
+                &[],
+            )?;
 
             // Set interaction profile BS
+            let pose_path = |hand: &str| format!("/user/hand/{}/input/aim/pose", hand);
             let right_hand_pose_path = xr_core
                 .instance
-                .string_to_path("/user/hand/right/input/aim/pose")?;
+                .string_to_path(&pose_path("right"))?;
+            let left_hand_pose_path = xr_core
+                .instance
+                .string_to_path(&pose_path("left"))?;
             let interaction_profile_path = 
             xr_core
                 .instance
                 .string_to_path("/interaction_profiles/khr/simple_controller")?;
 
             let bindings = [
-                xr::Binding::new(&action, right_hand_pose_path),
+                xr::Binding::new(&action_right, right_hand_pose_path),
+                xr::Binding::new(&action_left, left_hand_pose_path),
             ];
             xr_core.instance.suggest_interaction_profile_bindings(interaction_profile_path, &bindings)?;
 
             // Attach sets
             xr_core.session.attach_action_sets(&[&action_set])?;
-            Some((action_set, action))
+            Some(OpenXrInteraction {
+                action_set,
+                action_right,
+                action_left,
+            })
         } else {
             None
         };
 
         Ok(Self {
-            action_stuff,
+            xr_interaction,
             camera,
             transforms,
             anim: 0.0,
@@ -339,17 +359,21 @@ impl SyncMainLoop for Protal {
 impl Protal {
     fn frame_data(&mut self, platform: &Platform<'_>) -> Result<FrameData> {
         self.anim += 0.02;
-        if let (Some((set, action)), Platform::OpenXr { xr_core, frame_state }) = (self.action_stuff.as_ref(), platform) {
-            let active = xr::ActiveActionSet::new(set);
+        if let (Some(interact), Platform::OpenXr { xr_core, frame_state }) = (self.xr_interaction.as_ref(), platform) {
+            let active = xr::ActiveActionSet::new(&interact.action_set);
             xr_core.session.sync_actions(&[active])?;
 
-            let space = action.create_space(xr_core.session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?;
-            let time = frame_state.unwrap().predicted_display_time;
-            let space_loc = space.locate(&xr_core.stage, time)?;
-            let pose = space_loc.pose;
-            let matrix = transform_from_pose(&pose);
+            let get_mat = |action: &xr::Action<xr::Posef>| -> Result<Matrix4<f32>> {
+                let space = action.create_space(xr_core.session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?;
+                let time = frame_state.unwrap().predicted_display_time;
+                let space_loc = space.locate(&xr_core.stage, time)?;
+                let pose = space_loc.pose;
+                Ok(transform_from_pose(&pose))
+            };
 
-            Ok(FrameData { positions: vec![*matrix.as_ref()] })
+            let left = get_mat(&interact.action_left)?;
+            let right = get_mat(&interact.action_right)?;
+            Ok(FrameData { positions: vec![*left.as_ref(), *right.as_ref()] })
         } else {
             Ok(FrameData {
                 positions: vec![
