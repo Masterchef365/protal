@@ -69,12 +69,15 @@ impl MainLoop for Protal {
             .collect::<Result<Vec<_>>>()?;
 
         // Create descriptor set layout
-        let binding = 0;
-        let bindings = [vk::DescriptorSetLayoutBindingBuilder::new()
-            .binding(binding)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)];
+        const FRAME_DATA_BINDING: u32 = 0;
+        const TRANSFORM_BINDING: u32 = 1;
+        let bindings = [
+            vk::DescriptorSetLayoutBindingBuilder::new()
+                .binding(FRAME_DATA_BINDING)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
+        ];
 
         let descriptor_set_layout_ci =
             vk::DescriptorSetLayoutCreateInfoBuilder::new().bindings(&bindings);
@@ -88,11 +91,15 @@ impl MainLoop for Protal {
         // Create descriptor pool
         let pool_sizes = [vk::DescriptorPoolSizeBuilder::new()
             ._type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(FRAMES_IN_FLIGHT as _)];
+            .descriptor_count(FRAMES_IN_FLIGHT as _),
+            vk::DescriptorPoolSizeBuilder::new()
+            ._type(vk::DescriptorType::STORAGE_BUFFER)
+            .descriptor_count(FRAMES_IN_FLIGHT as _)
+        ];
 
         let create_info = vk::DescriptorPoolCreateInfoBuilder::new()
             .pool_sizes(&pool_sizes)
-            .max_sets(FRAMES_IN_FLIGHT as _);
+            .max_sets((FRAMES_IN_FLIGHT * 2) as _);
 
         let descriptor_pool =
             unsafe { core.device.create_descriptor_pool(&create_info, None, None) }.result()?;
@@ -107,25 +114,20 @@ impl MainLoop for Protal {
             unsafe { core.device.allocate_descriptor_sets(&create_info) }.result()?;
 
         // Write descriptor sets
-        let buffer_infos: Vec<_> = (0..FRAMES_IN_FLIGHT)
-            .map(|frame| [scene_data.descriptor_buffer_info(frame)])
-            .collect();
-
-        let writes: Vec<_> = buffer_infos
-            .iter()
-            .zip(descriptor_sets.iter())
-            .map(|(info, &descriptor_set)| {
+        for (frame, &descriptor_set) in descriptor_sets.iter().enumerate() {
+            let buffer_infos = [scene_data.descriptor_buffer_info(frame)];
+            let writes = [
                 vk::WriteDescriptorSetBuilder::new()
-                    .buffer_info(info)
+                    .buffer_info(&buffer_infos)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .dst_set(descriptor_set)
-                    .dst_binding(binding)
+                    .dst_binding(FRAME_DATA_BINDING)
                     .dst_array_element(0)
-            })
-            .collect();
+            ];
 
-        unsafe {
-            core.device.update_descriptor_sets(&writes, &[]);
+            unsafe {
+                core.device.update_descriptor_sets(&writes, &[]);
+            }
         }
 
         // Pipeline layout
