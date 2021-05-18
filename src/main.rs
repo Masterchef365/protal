@@ -184,17 +184,32 @@ impl MainLoop for Protal {
         )?;
 
         let action_stuff = if let Platform::OpenXr { xr_core, .. } = platform {
+            // Create action set
             let action_set = xr_core
                 .instance
                 .create_action_set("gameplay", "Gameplay", 0)?;
-            let right_hand_pose_path = xr_core
-                .instance
-                .string_to_path("/user/hand/right/input/aim/pose")?;
             let action = action_set.create_action::<xr::Posef>(
                 "right_pose",
                 "Right pose",
-                &[right_hand_pose_path],
+                &[],
             )?;
+
+            // Set interaction profile BS
+            let right_hand_pose_path = xr_core
+                .instance
+                .string_to_path("/user/hand/right/input/aim/pose")?;
+            let interaction_profile_path = 
+            xr_core
+                .instance
+                .string_to_path("/interaction_profiles/khr/simple_controller")?;
+
+            let bindings = [
+                xr::Binding::new(&action, right_hand_pose_path),
+            ];
+            xr_core.instance.suggest_interaction_profile_bindings(interaction_profile_path, &bindings)?;
+
+            // Attach sets
+            xr_core.session.attach_action_sets(&[&action_set])?;
             Some((action_set, action))
         } else {
             None
@@ -324,11 +339,17 @@ impl SyncMainLoop for Protal {
 impl Protal {
     fn frame_data(&mut self, platform: &Platform<'_>) -> Result<FrameData> {
         self.anim += 0.02;
-        if let (Some((set, action)), Platform::OpenXr { xr_core, .. }) = (self.action_stuff.as_ref(), platform) {
+        if let (Some((set, action)), Platform::OpenXr { xr_core, frame_state }) = (self.action_stuff.as_ref(), platform) {
             let active = xr::ActiveActionSet::new(set);
             xr_core.session.sync_actions(&[active])?;
 
-            Ok(FrameData { positions: vec![] })
+            let space = action.create_space(xr_core.session.clone(), xr::Path::NULL, xr::Posef::IDENTITY)?;
+            let time = frame_state.unwrap().predicted_display_time;
+            let space_loc = space.locate(&xr_core.stage, time)?;
+            let pose = space_loc.pose;
+            let matrix = watertender::xr_camera::view_from_pose(&pose);
+
+            Ok(FrameData { positions: vec![*matrix.as_ref()] })
         } else {
             Ok(FrameData {
                 positions: vec![
