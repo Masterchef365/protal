@@ -175,7 +175,7 @@ impl MainLoop for Protal {
         )?;
 
         // Mesh uploads
-        let (vertices, indices) = rainbow_cube();
+        let (vertices, indices) = rainbow_cube(0.1);
         let rainbow_cube = upload_mesh(
             &mut starter_kit.staging_buffer,
             starter_kit.command_buffers[0],
@@ -361,16 +361,16 @@ impl Protal {
     }
 }
 
-fn rainbow_cube() -> (Vec<Vertex>, Vec<u32>) {
+fn rainbow_cube(size: f32) -> (Vec<Vertex>, Vec<u32>) {
     let vertices = vec![
-        Vertex::new([-1.0, -1.0, -1.0], [0.0, 1.0, 1.0]),
-        Vertex::new([1.0, -1.0, -1.0], [1.0, 0.0, 1.0]),
-        Vertex::new([1.0, 1.0, -1.0], [1.0, 1.0, 0.0]),
-        Vertex::new([-1.0, 1.0, -1.0], [0.0, 1.0, 1.0]),
-        Vertex::new([-1.0, -1.0, 1.0], [1.0, 0.0, 1.0]),
-        Vertex::new([1.0, -1.0, 1.0], [1.0, 1.0, 0.0]),
-        Vertex::new([1.0, 1.0, 1.0], [0.0, 1.0, 1.0]),
-        Vertex::new([-1.0, 1.0, 1.0], [1.0, 0.0, 1.0]),
+        Vertex::new([-size, -size, -size], [0.0, 1.0, 1.0]),
+        Vertex::new([size, -size, -size], [1.0, 0.0, 1.0]),
+        Vertex::new([size, size, -size], [1.0, 1.0, 0.0]),
+        Vertex::new([-size, size, -size], [0.0, 1.0, 1.0]),
+        Vertex::new([-size, -size, size], [1.0, 0.0, 1.0]),
+        Vertex::new([size, -size, size], [1.0, 1.0, 0.0]),
+        Vertex::new([size, size, size], [0.0, 1.0, 1.0]),
+        Vertex::new([-size, size, size], [1.0, 0.0, 1.0]),
     ];
 
     let indices = vec![
