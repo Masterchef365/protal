@@ -4,6 +4,7 @@ use watertender::memory;
 use watertender::prelude::*;
 mod managed_ubo;
 use managed_ubo::ManagedUbo;
+use watertender::openxr as xr;
 
 const MAX_TRANSFORMS: usize = 2;
 
@@ -13,6 +14,8 @@ struct Protal {
     rainbow_cube: ManagedMesh,
     transforms: Vec<ManagedBuffer>,
     scene_data: ManagedUbo<SceneData>,
+
+    action_stuff: Option<(xr::ActionSet, xr::Action<xr::Posef>)>,
 
     descriptor_sets: Vec<vk::DescriptorSet>,
     descriptor_pool: vk::DescriptorPool,
@@ -180,7 +183,25 @@ impl MainLoop for Protal {
             &indices,
         )?;
 
+        let action_stuff = if let Platform::OpenXr { xr_core, .. } = platform {
+            let action_set = xr_core
+                .instance
+                .create_action_set("gameplay", "Gameplay", 0)?;
+            let right_hand_pose_path = xr_core
+                .instance
+                .string_to_path("/user/hand/right/input/aim/pose")?;
+            let action = action_set.create_action::<xr::Posef>(
+                "right_pose",
+                "Right pose",
+                &[right_hand_pose_path],
+            )?;
+            Some((action_set, action))
+        } else {
+            None
+        };
+
         Ok(Self {
+            action_stuff,
             camera,
             transforms,
             anim: 0.0,
@@ -202,7 +223,7 @@ impl MainLoop for Protal {
         core: &SharedCore,
         platform: Platform<'_>,
     ) -> Result<PlatformReturn> {
-        let frame_data = self.frame_data();
+        let frame_data = self.frame_data(&platform)?;
 
         self.transforms[self.starter_kit.frame]
             .write_bytes(0, bytemuck::cast_slice(frame_data.positions.as_slice()))?;
@@ -301,13 +322,20 @@ impl SyncMainLoop for Protal {
 }
 
 impl Protal {
-    fn frame_data(&mut self) -> FrameData {
-        self.anim += 0.002;
-        FrameData {
-            positions: vec![
-                *Matrix4::new_translation(&Vector3::new(0., -3., 0.)).as_ref(),
-                *Matrix4::from_euler_angles(0., self.anim, 0.).as_ref(),
-            ],
+    fn frame_data(&mut self, platform: &Platform<'_>) -> Result<FrameData> {
+        self.anim += 0.02;
+        if let (Some((set, action)), Platform::OpenXr { xr_core, .. }) = (self.action_stuff.as_ref(), platform) {
+            let active = xr::ActiveActionSet::new(set);
+            xr_core.session.sync_actions(&[active])?;
+
+            Ok(FrameData { positions: vec![] })
+        } else {
+            Ok(FrameData {
+                positions: vec![
+                    *Matrix4::new_translation(&Vector3::new(0., -3., 0.)).as_ref(),
+                    *Matrix4::from_euler_angles(0., self.anim, 0.).as_ref(),
+                ],
+            })
         }
     }
 }
