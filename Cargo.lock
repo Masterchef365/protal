@@ -359,7 +359,8 @@ checksum = "3dcaa9ae7725d12cdb85b3ad99a434db70b468c09ded17e012d86b5c1010f7a7"
 [[package]]
 name = "gpu-alloc"
 version = "0.4.5"
-source = "git+https://github.com/zakarumych/gpu-alloc.git#18ae6524795239acdde0942a1ac0fed3ce7a59c7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc76088804bb65a6f3b880bea9306fdaeffb25ebb453105fafa691282ee9fdba"
 dependencies = [
  "bitflags",
  "gpu-alloc-types",
@@ -368,7 +369,8 @@ dependencies = [
 [[package]]
 name = "gpu-alloc-erupt"
 version = "0.4.0"
-source = "git+https://github.com/zakarumych/gpu-alloc.git#18ae6524795239acdde0942a1ac0fed3ce7a59c7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cad42d73bca54f7a06a77b897b06ca5f0503dbd3e914fde25180a3156f799ba"
 dependencies = [
  "erupt",
  "gpu-alloc-types",
@@ -377,8 +379,9 @@ dependencies = [
 
 [[package]]
 name = "gpu-alloc-types"
-version = "0.2.1"
-source = "git+https://github.com/zakarumych/gpu-alloc.git#18ae6524795239acdde0942a1ac0fed3ce7a59c7"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54804d0d6bc9d7f26db4eaec1ad10def69b599315f487d32c334a80d1efe67a5"
 dependencies = [
  "bitflags",
 ]
