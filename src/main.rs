@@ -1,14 +1,17 @@
 use nalgebra::{Matrix4, Vector3};
-use watertender::prelude::*;
 use watertender::defaults::FRAMES_IN_FLIGHT;
+use watertender::memory;
+use watertender::prelude::*;
 mod managed_ubo;
 use managed_ubo::ManagedUbo;
+
+const MAX_TRANSFORMS: usize = 2;
 
 use anyhow::Result;
 
 struct Protal {
     rainbow_cube: ManagedMesh,
-    //transforms: ManagedBuffer,
+    transforms: Vec<ManagedBuffer>,
     scene_data: ManagedUbo<SceneData>,
 
     descriptor_sets: Vec<vk::DescriptorSet>,
@@ -39,6 +42,12 @@ struct SceneData {
 unsafe impl bytemuck::Zeroable for SceneData {}
 unsafe impl bytemuck::Pod for SceneData {}
 
+type Transform = [[f32; 4]; 4];
+
+pub struct FrameData {
+    pub positions: Vec<Transform>,
+}
+
 impl MainLoop for Protal {
     fn new(core: &SharedCore, mut platform: Platform<'_>) -> Result<Self> {
         let mut starter_kit = StarterKit::new(core.clone(), &mut platform)?;
@@ -48,6 +57,16 @@ impl MainLoop for Protal {
 
         // Scene data
         let scene_data = ManagedUbo::new(core.clone(), FRAMES_IN_FLIGHT)?;
+
+        // Transforms data
+        let total_size = std::mem::size_of::<Transform>() * MAX_TRANSFORMS;
+        let ci = vk::BufferCreateInfoBuilder::new()
+            .size(total_size as u64)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
+        let transforms = (0..FRAMES_IN_FLIGHT)
+            .map(|_| ManagedBuffer::new(core.clone(), ci, memory::UsageFlags::UPLOAD))
+            .collect::<Result<Vec<_>>>()?;
 
         // Create descriptor set layout
         let binding = 0;
@@ -89,9 +108,7 @@ impl MainLoop for Protal {
 
         // Write descriptor sets
         let buffer_infos: Vec<_> = (0..FRAMES_IN_FLIGHT)
-            .map(|frame| {
-                [scene_data.descriptor_buffer_info(frame)]
-            })
+            .map(|frame| [scene_data.descriptor_buffer_info(frame)])
             .collect();
 
         let writes: Vec<_> = buffer_infos
@@ -146,6 +163,7 @@ impl MainLoop for Protal {
 
         Ok(Self {
             camera,
+            transforms,
             anim: 0.0,
             pipeline_layout,
             descriptor_set_layout,
@@ -237,10 +255,6 @@ impl SyncMainLoop for Protal {
     fn winit_sync(&self) -> (vk::Semaphore, vk::Semaphore) {
         self.starter_kit.winit_sync()
     }
-}
-
-struct FrameData {
-    positions: Vec<[[f32; 4]; 4]>,
 }
 
 impl Protal {

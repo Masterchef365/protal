@@ -6,7 +6,6 @@ use watertender::prelude::*;
 
 pub struct ManagedUbo<T> {
     buffer: ManagedBuffer,
-    core: SharedCore,
     padded_size: u64,
     frames: usize,
     _phantom: PhantomData<T>,
@@ -25,11 +24,10 @@ impl<T: Pod> ManagedUbo<T> {
             .size(total_size)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
-        let buffer = ManagedBuffer::new(core.clone(), ci, memory::UsageFlags::UPLOAD)?;
+        let buffer = ManagedBuffer::new(core, ci, memory::UsageFlags::UPLOAD)?;
 
         Ok(Self {
             frames,
-            core,
             buffer,
             padded_size,
             _phantom: PhantomData,
